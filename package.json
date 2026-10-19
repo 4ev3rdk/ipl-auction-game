@@ -1,0 +1,23 @@
+{
+  "name": "ipl-auction-game",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/4ev3rdk/ipl-auction-game.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/4ev3rdk/ipl-auction-game/issues"
+  },
+  "homepage": "https://github.com/4ev3rdk/ipl-auction-game#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "mysql2": "^3.24.6"
+  }
+}
