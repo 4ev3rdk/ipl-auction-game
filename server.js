@@ -2,11 +2,11 @@
 const express = require("express");
 const mysql = require("mysql2");
 
-// Create the Express application
+
 const app = express();
 const PORT = 3000;
 
-// Database connection settings
+
 const db = mysql.createConnection({
     host: "localhost",
     user: "root",
@@ -14,38 +14,35 @@ const db = mysql.createConnection({
     database: "ipl_auction"
 });
 
-// Connect to MySQL
+
 db.connect((err) => {
     if (err) {
         console.log("Database connection failed:", err.message);
-        return; // Stop this function if connection fails
+        return;
     }
 
     console.log("Connected to MySQL!");
 });
 
-// Allow the browser to access html,css and js file
+db.query(`
+    UPDATE players
+    SET status = 'available',
+        sold_to = NULL,
+        sold_price = NULL
+`);
+
+db.query("UPDATE teams SET budget = 120.00");
+
+console.log("Auction reset successfully!");
+
 app.use(express.static("public"));
+app.use(express.json());
 
-// API route: return all players from the database
-// app.get("/players", (req, res) => {
-//     // Execute an SQL query
-//     db.query("SELECT * FROM players", (err, results) => {
-//         if (err) {
-//             // Send an error response if the query fails
-//             return res.status(500).send("Database query failed");
-//         }
-
-//         // Send the player records as JSON
-//         res.json(results);
-//     });  
-// });
-
-// Get one random available player for the auction
+// route to get a player 
 app.get("/next-player", (req, res) => {
     db.query(
         "SELECT * FROM players WHERE status = 'available' ORDER BY RAND() LIMIT 1",
-        (err, results) => {
+        (err, results) => { //callback function
             if (err) {
                 return res.status(500).send("Database query failed");
             }
@@ -59,36 +56,22 @@ app.get("/next-player", (req, res) => {
     );
 });
 
-
-// Route to mark a player as unsold
+//route for unsold player
 app.post("/unsold/:id", (req, res) => {
-
-    // Update the player's status in the database
     db.query(
         "UPDATE players SET status = 'unsold' WHERE id = ?",
         [req.params.id],
-
         (err) => {
-            // Send an error if the database update fails
-            if (err) {
-                return res.status(500).send("Database update failed");
-            }
-
-            // Confirm that the player is marked unsold
+            if (err) return res.status(500).send("Database update failed");
             res.send("Player marked unsold");
         }
     );
 });
 
+//route for sold player
+app.post("/sell-player", (req, res) => {
+    const { playerId, teamCode, soldPrice } = req.body;
 
-
-// Place above app.listen()
-
-// Route to place a bid
-app.post("/bid", express.json(), (req, res) => {
-    const { playerId, teamCode, bidAmount } = req.body;
-
-    // Check the team's remaining budget
     db.query(
         "SELECT budget FROM teams WHERE team_code = ?",
         [teamCode],
@@ -97,15 +80,65 @@ app.post("/bid", express.json(), (req, res) => {
                 return res.status(400).send("Team not found");
             }
 
-            if (bidAmount > teams[0].budget) {
+            if (Number(soldPrice) > Number(teams[0].budget)) {
                 return res.status(400).send("Not enough budget");
             }
 
-            // Accept the bid
-            res.json({ message: "Bid accepted", bidAmount });
+            db.query(
+                "UPDATE players SET status = 'sold', sold_to = ?, sold_price = ? WHERE id = ? AND status = 'available'",
+                [teamCode, soldPrice, playerId],
+                (err, result) => {
+                    if (err || result.affectedRows === 0) {
+                        return res.status(400).send("Could not sell player");
+                    }
+
+                    db.query(
+                        "UPDATE teams SET budget = budget - ? WHERE team_code = ?",
+                        [soldPrice, teamCode],
+                        (err) => {
+                            if (err) {
+                                return res.status(500).send("Budget update failed");
+                            }
+
+                            res.send("Player sold successfully");
+                        }
+                    );
+                }
+            );
         }
     );
 });
+
+
+
+app.get("/team-squad/:teamCode", (req, res) => {
+    const teamCode = req.params.teamCode;
+
+    db.query(
+        `SELECT name, role, country, sold_price
+         FROM players
+         WHERE sold_to = ? AND status = 'sold'`,
+        [teamCode],
+        (err, players) => {
+            if (err) {
+                return res.status(500).send("Failed to fetch squad");
+            }
+
+            db.query(
+                "SELECT budget FROM teams WHERE team_code = ?",
+                [teamCode],
+                (err, teams) => {
+                    if (err || teams.length === 0) {
+                        return res.status(500).send("Failed to fetch team budget");
+                    }
+
+                    res.json({ teamCode, budget: teams[0].budget, players });
+                }
+            );
+        }
+    );
+});
+
 
 // Start the server and listen on the specified port
 app.listen(PORT, () => {
